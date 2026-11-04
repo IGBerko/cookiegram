@@ -1,6 +1,5 @@
 include ':TMessagesProj'
 include ':TMessagesProj_App'
-include ':TMessagesProj_AppStandalone'
 include ':jlatexmath'
 project(':jlatexmath').projectDir = file('TMessagesProj/lib/jlatexmath/jlatexmath')
 

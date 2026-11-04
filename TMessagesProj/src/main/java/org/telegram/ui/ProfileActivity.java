@@ -321,6 +321,9 @@ import org.telegram.ui.bots.ChannelAffiliateProgramsFragment;
 import org.telegram.ui.bots.SetupEmojiStatusSheet;
 import org.telegram.ui.community.CommunitySheet;
 import org.telegram.ui.QrShare.QrShareActivity;
+import android.text.style.BackgroundColorSpan;
+import org.telegram.messenger.CookiegramBadges;
+
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -465,6 +468,14 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private int actionBarBackgroundColor;
     private TopView topView;
     private long userId;
+
+    private final Runnable cookiegramBadgesPoll = new Runnable() {
+        @Override
+        public void run() {
+            CookiegramBadges.refreshIfStale(30_000);
+            AndroidUtilities.runOnUIThread(this, 60_000);
+        }
+    };
     private long chatId;
     private long topicId;
     public boolean saved;
@@ -2147,6 +2158,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             getNotificationCenter().addObserver(this, NotificationCenter.userInfoDidLoad);
             getNotificationCenter().addObserver(this, NotificationCenter.privacyRulesUpdated);
             NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.reloadInterface);
+            NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.cookiegramBadgesUpdated);
+            CookiegramBadges.refreshIfStale(30_000);
+            AndroidUtilities.runOnUIThread(cookiegramBadgesPoll, 60_000);
 
             userBlocked = getMessagesController().blockePeers.indexOfKey(userId) >= 0;
             if (user.bot) {
@@ -2420,6 +2434,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             getNotificationCenter().removeObserver(this, NotificationCenter.userInfoDidLoad);
             getNotificationCenter().removeObserver(this, NotificationCenter.privacyRulesUpdated);
             NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.reloadInterface);
+            NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.cookiegramBadgesUpdated);
+            AndroidUtilities.cancelRunOnUIThread(cookiegramBadgesPoll);
             getMessagesController().cancelLoadFullUser(userId);
         } else if (chatId != 0) {
             NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.uploadStoryEnd);
@@ -9268,6 +9284,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 botInfo = info;
                 updateListAnimated(false);
             }
+        } else if (id == NotificationCenter.cookiegramBadgesUpdated) {
+            updateProfileData(false);
         } else if (id == NotificationCenter.userInfoDidLoad) {
             final long uid = (Long) args[0];
             if (uid == userId) {
@@ -11306,6 +11324,30 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
     private MessagesController.PeerColor peerColor;
 
+    private void showCookiegramBadge(CookiegramBadges.Badge badge) {
+        if (getParentActivity() == null) {
+            return;
+        }
+        TextView textView = new TextView(getParentActivity());
+        textView.setText(badge.text);
+        textView.setTextColor(badge.textColor);
+        textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
+        textView.setGravity(Gravity.CENTER);
+        textView.setPadding(dp(16), dp(14), dp(16), dp(14));
+        GradientDrawable background = new GradientDrawable();
+        background.setColor(badge.bgColor);
+        background.setCornerRadius(dp(12));
+        textView.setBackground(background);
+
+        FrameLayout container = new FrameLayout(getParentActivity());
+        container.addView(textView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP, 24, 8, 24, 0));
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity(), resourcesProvider);
+        builder.setTitle("🍪 Cookiegram");
+        builder.setView(container);
+        builder.setPositiveButton(getString(R.string.OK), null);
+        showDialog(builder.create());
+    }
     private void updateProfileData(boolean reload) {
         if (avatarContainer == null || nameTextView == null || getParentActivity() == null) {
             return;
@@ -11412,6 +11454,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             }
 
             CharSequence newString = UserObject.getUserName(user);
+            final CookiegramBadges.Badge cookiegramBadge = CookiegramBadges.get(user.id);
+            if (cookiegramBadge != null) {
+                newString = TextUtils.concat(newString, " 🍪");
+            }
             String newString2;
             boolean hiddenStatusButton = false;
             if (user.id == getUserConfig().getClientUserId()) {
@@ -11559,6 +11605,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     nameTextView[a].setLeftDrawableOutside(false);
                 }
                 nameTextView[a].setLeftDrawable(leftIcon);
+                if (cookiegramBadge != null) {
+                    nameTextView[a].setOnClickListener(v -> showCookiegramBadge(cookiegramBadge));
+                } else {
+                    nameTextView[a].setOnClickListener(null);
+                    nameTextView[a].setClickable(false);
+                }
                 if (a == 1 && (rightIconIsStatus || rightIconIsPremium)) {
                     nameTextView[a].setRightDrawableOutside(true);
                 }
@@ -11777,7 +11829,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 BackupImageView fromAvatarImage = chatActivity.avatarContainer.getAvatarImageView();
                 avatarImage.setAnimateFromImageReceiver(fromAvatarImage.getImageReceiver());
             }
-
+            final CookiegramBadges.Badge chatBadge = CookiegramBadges.get(-chat.id);
             boolean changed = false;
             for (int a = 0; a < 2; a++) {
                 if (nameTextView[a] == null) {
@@ -11811,6 +11863,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     }
                 } else if (chat.title != null) {
                     CharSequence title = chat.title;
+                    if (chatBadge != null) {
+                        title = TextUtils.concat(title, " 🍪");
+                    }
                     try {
                         title = Emoji.replaceEmoji(title, nameTextView[a].getPaint().getFontMetricsInt(), false);
                     } catch (Exception ignore) {
@@ -11873,6 +11928,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 if (chat.bot_verification_icon != 0) {
                     nameTextView[a].setLeftDrawableOutside(true);
                     nameTextView[a].setLeftDrawable(getBotVerificationDrawable(chat.bot_verification_icon, false, a));
+                    if (chatBadge != null) {
+                        nameTextView[a].setOnClickListener(v -> showCookiegramBadge(chatBadge));
+                    } else {
+                        nameTextView[a].setOnClickListener(null);
+                        nameTextView[a].setClickable(false);
+                    }
                 } else {
                     nameTextView[a].setLeftDrawable(null);
                 }
@@ -14093,7 +14154,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                                     ));
                                 }
                             }
-
                             cell.setLinkTextRippleColor(Theme.multAlpha(getThemedColor(Theme.key_windowBackgroundWhiteGrayText4), 0.2f));
                             cell.setText(sb);
                         } else {

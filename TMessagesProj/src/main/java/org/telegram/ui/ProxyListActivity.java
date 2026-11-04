@@ -77,6 +77,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
     private final static boolean IS_PROXY_ROTATION_AVAILABLE = true;
     private static final int MENU_DELETE = 0;
     private static final int MENU_SHARE = 1;
+    private static final int MENU_REFRESH = 2;
 
     private ListAdapter listAdapter;
     private RecyclerListView listView;
@@ -357,6 +358,19 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.didUpdateConnectionState);
     }
 
+    private void refreshProxies() {
+        for (SharedConfig.ProxyInfo info : proxyList) {
+            if (info.checking) {
+                return; // цикл ещё идёт, ждём его окончания
+            }
+        }
+        for (SharedConfig.ProxyInfo info : proxyList) {
+            info.availableCheckTime = 0;
+        }
+        wasCheckedAllList = false;
+        updateRows(true);
+    }
+
     @Override
     public View createView(Context context) {
         actionBar.setBackButtonDrawable(new BackDrawable(false));
@@ -366,6 +380,9 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
             actionBar.setOccupyStatusBar(false);
         }
         actionBar.setAllowOverlayTitle(false);
+        ActionBarMenu menu = actionBar.createMenu();
+        ActionBarMenuItem refreshItem = menu.addItem(MENU_REFRESH, R.drawable.msg_retry);
+        refreshItem.setContentDescription("Обновить");
         actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
             @Override
             public void onItemClick(int id) {
@@ -524,6 +541,9 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                         } else {
                             listAdapter.clearSelected();
                         }
+                        break;
+                    case MENU_REFRESH:
+                        refreshProxies();
                         break;
                     case MENU_DELETE:
                         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
@@ -873,6 +893,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                     TextDetailProxyCell cell = (TextDetailProxyCell) holder.itemView;
                     SharedConfig.ProxyInfo info = proxyList.get(position - proxyStartRow);
                     cell.setProxy(info);
+                    cell.updateStatus();
                     cell.setChecked(SharedConfig.currentProxy == info);
                     cell.setItemSelected(selectedItems.contains(proxyList.get(position - proxyStartRow)), false);
                     cell.setSelectionEnabled(!selectedItems.isEmpty(), false);
