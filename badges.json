@@ -11,17 +11,16 @@
     "bg_color": "#1A1A1A",
     "text_color": "#A0A0A0"
   },
-  "cookiegramofficial": {
+  "-cookiegramofficial": {
     "text": "cookiegram - Это официальный канал разработчиков cookiegram!",
     "icon_url": "https://raw.githubusercontent.com/IGBerko/cookiegram/refs/heads/master/logo.png",
     "bg_color": "#1A1A1A",
     "text_color": "#A0A0A0"
   },
-  "cookiegramreleases": {
+  "-cookiegramreleases": {
     "text": "cookiegram Releases! - Это официальный канал разработчиков cookiegram!",
     "icon_url": "https://raw.githubusercontent.com/IGBerko/cookiegram/refs/heads/master/logo.png",
     "bg_color": "#1A1A1A",
     "text_color": "#A0A0A0"
   }
 }
-
