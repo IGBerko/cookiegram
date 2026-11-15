@@ -15,17 +15,21 @@ import java.util.Iterator;
 
 public class CookiegramBadges {
 
+    public static final long DEFAULT_EMOJI_ID = 5775933124160523599L;
+
     public static class Badge {
         public final String text;
         public final String iconUrl;
         public final int bgColor;
         public final int textColor;
+        public final long emojiId;
 
-        Badge(String text, String iconUrl, int bgColor, int textColor) {
+        Badge(String text, String iconUrl, int bgColor, int textColor, long emojiId) {
             this.text = text;
             this.iconUrl = iconUrl;
             this.bgColor = bgColor;
             this.textColor = textColor;
+            this.emojiId = emojiId;
         }
     }
 
@@ -129,7 +133,8 @@ public class CookiegramBadges {
                     if (!icon.startsWith("https://")) icon = "";
                     int bg = parseColor(o.optString("bg_color"), 0xFF2D1B10);
                     int fg = parseColor(o.optString("text_color"), 0xFFFFFFFF);
-                    result.put(id, new Badge(text, icon, bg, fg));
+                    long emoji = o.optLong("emoji_id", DEFAULT_EMOJI_ID);
+                    result.put(id, new Badge(text, icon, bg, fg, emoji));
                 } catch (Throwable ignore) {
                 }
             }

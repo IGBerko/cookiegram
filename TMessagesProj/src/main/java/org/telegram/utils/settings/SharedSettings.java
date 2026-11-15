@@ -36,6 +36,8 @@ public final class SharedSettings {
     public static final EnumSetting<RoundVideoSession.CameraFacing> roundVideoLastCamera =
         EnumSetting.of("round_video_last_camera", RoundVideoSession.CameraFacing.FRONT);
 
+    public static final BooleanSetting oldDesign =
+            BooleanSetting.of("old_design", true);
     private SharedSettings() {
     }
 }

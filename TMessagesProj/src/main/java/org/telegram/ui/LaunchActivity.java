@@ -259,6 +259,18 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+import org.telegram.messenger.CookiegramLinks;
+import android.graphics.Point;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import org.telegram.ui.Components.RecyclerListView;
+import org.telegram.ui.ActionBar.DrawerContainer;
+import org.telegram.ui.Adapters.DrawerLayoutAdapter;
+import org.telegram.ui.Cells.DrawerAddCell;
+import org.telegram.ui.Cells.DrawerProfileCell;
+import org.telegram.ui.Cells.DrawerUserCell;
+import org.telegram.ui.Components.SideMenultItemAnimator;
+import org.telegram.utils.settings.SharedSettings;
+
 
 public class LaunchActivity extends BasePermissionsActivity implements INavigationLayout.INavigationLayoutDelegate, NotificationCenter.NotificationCenterDelegate, DialogsActivity.DialogsActivityDelegate, IPipActivity {
     public final static String EXTRA_FORCE_NOT_INTERNAL_APPS = "force_not_internal_apps";
@@ -314,6 +326,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     private FireworksOverlay fireworksOverlay;
     private BottomSheetTabsOverlay bottomSheetTabsOverlay;
     public DrawerLayoutContainer drawerLayoutContainer;
+    private DrawerLayoutAdapter drawerLayoutAdapter;
+    private RecyclerListView sideMenu;
+    private SideMenultItemAnimator sideMenuItemAnimator;
+    private FrameLayout sideMenuContainer;
     private PasscodeViewDialog passcodeDialog;
     private List<PasscodeView> overlayPasscodeViews = new ArrayList<>();
     private TermsOfServiceView termsOfServiceView;
@@ -393,6 +409,129 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
     private FrameMetricsOverlayView frameMetricsOverlayView;
     // private RefreshRateController refreshRateController;
+    private void setupSideMenu() {
+        sideMenuContainer = new DrawerContainer(this);
+        sideMenu = new RecyclerListView(this) {
+            @Override
+            public boolean drawChild(Canvas canvas, View child, long drawingTime) {
+                int restore = -1;
+                if (sideMenuItemAnimator != null && sideMenuItemAnimator.isRunning() && sideMenuItemAnimator.isAnimatingChild(child)) {
+                    restore = canvas.save();
+                    canvas.clipRect(0, sideMenuItemAnimator.getAnimationClipTop(), getMeasuredWidth(), getMeasuredHeight());
+                }
+                boolean result = super.drawChild(canvas, child, drawingTime);
+                if (restore >= 0) {
+                    canvas.restoreToCount(restore);
+                    invalidate();
+                    invalidateViews();
+                }
+                return result;
+            }
+        };
+        sideMenuItemAnimator = new SideMenultItemAnimator(sideMenu);
+        sideMenu.setItemAnimator(sideMenuItemAnimator);
+        sideMenu.setClipToPadding(false);
+        sideMenu.setBackgroundColor(Theme.getColor(Theme.key_chats_menuBackground));
+        sideMenuContainer.setBackgroundColor(Theme.getColor(Theme.key_chats_menuBackground));
+        sideMenu.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.VERTICAL, false));
+        sideMenu.setAllowItemsInteractionDuringAnimation(false);
+        sideMenu.setAdapter(drawerLayoutAdapter = new DrawerLayoutAdapter(this, sideMenuItemAnimator, drawerLayoutContainer));
+        sideMenuContainer.addView(sideMenu, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        drawerLayoutContainer.setDrawerLayout(sideMenuContainer, sideMenu);
+        FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) sideMenuContainer.getLayoutParams();
+        Point screenSize = AndroidUtilities.getRealScreenSize();
+        layoutParams.width = AndroidUtilities.isTablet() ? AndroidUtilities.dp(320) : Math.min(AndroidUtilities.dp(320), Math.min(screenSize.x, screenSize.y) - AndroidUtilities.dp(56));
+        layoutParams.height = LayoutHelper.MATCH_PARENT;
+        sideMenuContainer.setLayoutParams(layoutParams);
+        sideMenu.setOnItemClickListener((view, position, x, y) -> onSideMenuItemClick(view, position, x, y));
+        drawerLayoutContainer.setAllowOpenDrawer(true, false);
+    }
+
+    private void onSideMenuItemClick(View view, int position, float x, float y) {
+        if (drawerLayoutAdapter.click(view, position)) {
+            drawerLayoutContainer.closeDrawer(false);
+            return;
+        }
+        if (position == 0) {
+            DrawerProfileCell profileCell = (DrawerProfileCell) view;
+            if (profileCell.isInAvatar(x, y)) {
+                openMyProfileFromMenu();
+            } else {
+                drawerLayoutAdapter.setAccountsShown(!drawerLayoutAdapter.isAccountsShown(), true);
+            }
+        } else if (view instanceof DrawerUserCell) {
+            switchToAccount(((DrawerUserCell) view).getAccountNumber(), true);
+            drawerLayoutContainer.closeDrawer(false);
+        } else if (view instanceof DrawerAddCell) {
+            int freeAccounts = 0;
+            Integer availableAccount = null;
+            for (int a = UserConfig.MAX_ACCOUNT_COUNT - 1; a >= 0; a--) {
+                if (!UserConfig.getInstance(a).isClientActivated()) {
+                    freeAccounts++;
+                    if (availableAccount == null) {
+                        availableAccount = a;
+                    }
+                }
+            }
+            if (!UserConfig.hasPremiumOnAccounts()) {
+                freeAccounts -= (UserConfig.MAX_ACCOUNT_COUNT - UserConfig.MAX_ACCOUNT_DEFAULT_COUNT);
+            }
+            if (freeAccounts > 0 && availableAccount != null) {
+                presentFragment(new LoginActivity(availableAccount));
+                drawerLayoutContainer.closeDrawer(false);
+            } else if (!UserConfig.hasPremiumOnAccounts() && actionBarLayout.getFragmentStack().size() > 0) {
+                BaseFragment fragment = actionBarLayout.getFragmentStack().get(0);
+                LimitReachedBottomSheet sheet = new LimitReachedBottomSheet(fragment, this, LimitReachedBottomSheet.TYPE_ACCOUNTS, currentAccount, null);
+                fragment.showDialog(sheet);
+                sheet.onShowPremiumScreenRunnable = () -> drawerLayoutContainer.closeDrawer(false);
+            }
+        } else {
+            int id = drawerLayoutAdapter.getId(position);
+            if (id == 2) {
+                presentFragment(new GroupCreateActivity(new Bundle()));
+            } else if (id == 3) {
+                Bundle args = new Bundle();
+                args.putBoolean("onlyUsers", true);
+                args.putBoolean("destroyAfterSelect", true);
+                args.putBoolean("createSecretChat", true);
+                args.putBoolean("allowBots", false);
+                args.putBoolean("allowSelf", false);
+                presentFragment(new ContactsActivity(args));
+            } else if (id == 4) {
+                Bundle args = new Bundle();
+                args.putInt("step", 0);
+                presentFragment(new ChannelCreateActivity(args));
+            } else if (id == 6) {
+                Bundle args = new Bundle();
+                args.putBoolean("needFinishFragment", false);
+                presentFragment(new ContactsActivity(args));
+            } else if (id == 8) {
+                presentFragment(new SettingsActivity());
+            } else if (id == 9) {
+                Browser.openUrl(this, LocaleController.getString(R.string.TelegramFaqUrl));
+            } else if (id == 10) {
+                presentFragment(new CallLogActivity());
+            } else if (id == 11) {
+                Bundle args = new Bundle();
+                args.putLong("user_id", UserConfig.getInstance(currentAccount).getClientUserId());
+                presentFragment(new ChatActivity(args));
+            } else if (id == 13) {
+                Browser.openUrl(this, LocaleController.getString(R.string.TelegramFeaturesUrl));
+            } else if (id == 16) {
+                openMyProfileFromMenu();
+                return;
+            }
+            drawerLayoutContainer.closeDrawer(false);
+        }
+    }
+
+    private void openMyProfileFromMenu() {
+        drawerLayoutContainer.closeDrawer(true);
+        Bundle args = new Bundle();
+        args.putLong("user_id", UserConfig.getInstance(currentAccount).getClientUserId());
+        args.putBoolean("my_profile", true);
+        presentFragment(new ProfileActivity(args));
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -545,8 +684,15 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         setupActionBarLayout();
         drawerLayoutContainer.setParentActionBarLayout(actionBarLayout);
         actionBarLayout.setDrawerLayoutContainer(drawerLayoutContainer);
+        if (SharedSettings.oldDesign.get()) {
+            setupSideMenu();
+        }
         actionBarLayout.setFragmentStack(mainFragmentsStack);
         actionBarLayout.setFragmentStackChangedListener(() -> {
+            if (drawerLayoutContainer != null && sideMenu != null) {
+                BaseFragment top = getLastFragment();
+                drawerLayoutContainer.setAllowOpenDrawer(!(top instanceof LoginActivity || top instanceof IntroActivity || top instanceof CountrySelectActivity), false);
+            }
             checkSystemBarColors(true, false);
             if (getLastFragment() != null && getLastFragment().getLastStoryViewer() != null) {
                 getLastFragment().getLastStoryViewer().updatePlayingMode();
@@ -1502,7 +1648,24 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     public boolean allowShowFingerprintDialog(PasscodeView passcodeView) {
         return overlayPasscodeViews.isEmpty() && this.passcodeDialog != null ? passcodeView == this.passcodeDialog.passcodeView : overlayPasscodeViews.get(overlayPasscodeViews.size() - 1) == passcodeView;
     }
-
+    private boolean handleCookiegramLink(Intent intent, Browser.Progress progress) {
+        if (intent == null || !Intent.ACTION_VIEW.equals(intent.getAction())) {
+            return false;
+        }
+        String target = CookiegramLinks.parseSettingsLink(intent.getData());
+        if (target == null) {
+            return false;
+        }
+        if (!UserConfig.getInstance(UserConfig.selectedAccount).isClientActivated()) {
+            return false; // без входа в аккаунт открывать нечего
+        }
+        if (progress != null) {
+            progress.end();
+        }
+        intent.setAction(null);
+        presentFragment(new CookiegramSettingsActivity(target));
+        return true;
+    }
     private boolean handleIntent(Intent intent, boolean isNew, boolean restore, boolean fromPassword) {
         return handleIntent(intent, isNew, restore, fromPassword, null, true, false);
     }
@@ -1516,6 +1679,9 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             return true;
         }
         if (AndroidUtilities.handleProxyIntent(this, intent, true)) {
+            return true;
+        }
+        if (handleCookiegramLink(intent, progress)) {
             return true;
         }
         if (intent == null || !Intent.ACTION_MAIN.equals(intent.getAction())) {

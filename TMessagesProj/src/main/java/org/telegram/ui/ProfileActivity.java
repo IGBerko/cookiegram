@@ -323,6 +323,7 @@ import org.telegram.ui.community.CommunitySheet;
 import org.telegram.ui.QrShare.QrShareActivity;
 import android.text.style.BackgroundColorSpan;
 import org.telegram.messenger.CookiegramBadges;
+import android.graphics.Paint;
 
 
 import java.io.BufferedInputStream;
@@ -413,6 +414,24 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private PagerIndicatorView avatarsViewPagerIndicatorView;
     private AvatarDrawable avatarDrawable;
     private ImageUpdater imageUpdater;
+    private CharSequence withCookiegramBadge(CharSequence name, CookiegramBadges.Badge badge) {
+        Paint.FontMetricsInt fm = null;
+        for (int i = 0; i < nameTextView.length; i++) {
+            if (nameTextView[i] != null) {
+                fm = nameTextView[i].getPaint().getFontMetricsInt();
+                break;
+            }
+        }
+        if (fm == null) {
+            return name;
+        }
+        SpannableStringBuilder sb = new SpannableStringBuilder(name);
+        sb.append(" ");
+        int start = sb.length();
+        sb.append("d");
+        sb.setSpan(new AnimatedEmojiSpan(badge.emojiId, fm), start, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        return sb;
+    }
     private int avatarColor;
     TimerDrawable autoDeleteItemDrawable;
     private ProfileGooeyView avatarGooey;
@@ -11328,29 +11347,33 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         if (getParentActivity() == null) {
             return;
         }
-        TextView textView = new TextView(getParentActivity());
-        textView.setText(badge.text);
-        textView.setTextColor(badge.textColor);
-        textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
-        textView.setGravity(Gravity.CENTER);
-        textView.setPadding(dp(16), dp(14), dp(16), dp(14));
-        GradientDrawable background = new GradientDrawable();
-        background.setColor(badge.bgColor);
-        background.setCornerRadius(dp(12));
-        textView.setBackground(background);
-
-        FrameLayout container = new FrameLayout(getParentActivity());
-        container.addView(textView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP, 24, 8, 24, 0));
-
-        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity(), resourcesProvider);
-        builder.setTitle("🍪 Cookiegram");
-        builder.setView(container);
-        builder.setPositiveButton(getString(R.string.OK), null);
-        showDialog(builder.create());
+        BulletinFactory.of(this).createSimpleBulletin(R.raw.contact_check, AndroidUtilities.replaceTags(badge.text)).show();
+    }
+    private CookiegramBadges.Badge cookiegramBadgeForThisProfile() {
+        if (userId != 0) {
+            return CookiegramBadges.get(userId);
+        }
+        if (chatId != 0) {
+            return CookiegramBadges.get(-chatId);
+        }
+        return null;
     }
     private void updateProfileData(boolean reload) {
         if (avatarContainer == null || nameTextView == null || getParentActivity() == null) {
             return;
+        }
+        final CookiegramBadges.Badge profileBadge = cookiegramBadgeForThisProfile();
+        android.util.Log.d("Cookiegram", "profile userId=" + userId + " chatId=" + chatId + " badge=" + (profileBadge != null));
+        for (int i = 0; i < nameTextView.length; i++) {
+            if (nameTextView[i] == null) {
+                continue;
+            }
+            if (profileBadge != null) {
+                nameTextView[i].setOnClickListener(v -> showCookiegramBadge(profileBadge));
+            } else {
+                nameTextView[i].setOnClickListener(null);
+                nameTextView[i].setClickable(false);
+            }
         }
         String onlineTextOverride;
         int currentConnectionState = getConnectionsManager().getConnectionState();
@@ -11456,7 +11479,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             CharSequence newString = UserObject.getUserName(user);
             final CookiegramBadges.Badge cookiegramBadge = CookiegramBadges.get(user.id);
             if (cookiegramBadge != null) {
-                newString = TextUtils.concat(newString, " 🍪");
+                newString = withCookiegramBadge(newString, cookiegramBadge);
             }
             String newString2;
             boolean hiddenStatusButton = false;
@@ -11864,7 +11887,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 } else if (chat.title != null) {
                     CharSequence title = chat.title;
                     if (chatBadge != null) {
-                        title = TextUtils.concat(title, " 🍪");
+                        title = withCookiegramBadge(title, chatBadge);
                     }
                     try {
                         title = Emoji.replaceEmoji(title, nameTextView[a].getPaint().getFontMetricsInt(), false);
